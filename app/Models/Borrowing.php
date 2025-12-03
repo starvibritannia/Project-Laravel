@@ -21,7 +21,7 @@ class Borrowing extends Model
     // Relasi ke Item (Barang)
     public function item()
     {
-        return $this->belongsTo(Item::class);
+        return $this->belongsTo(Item::class)->withTrashed();
     }
 
     // Relasi ke Visit (Kunjungan)

@@ -9,41 +9,65 @@ use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         // 1. Ambil data peminjaman yang statusnya masih 'dipinjam'
         $activeBorrowings = Borrowing::where('status', 'dipinjam')
                             ->with(['visit', 'item'])
                             ->get();
 
-        // 2. Ambil log kunjungan hari ini
-        $todaysVisits = Visit::whereDate('created_at', now()->today())
-                            ->orderBy('created_at', 'desc')
-                            ->get();
+        // 2. Filter aktivitas riwayat kunjungan hari ini
+        $activityFilter = $request->query('activity'); // null | meminjam | belajar
 
-        // 3. Identifikasi NIM Pengunjung
+        $visitsQuery = Visit::whereDate('created_at', now()->today())
+                        ->with(['borrowings.item']) // eager-load supaya $visit->borrowings bukan null
+                        ->orderBy('created_at', 'desc');
+
+        if ($activityFilter === 'meminjam') {
+            $visitsQuery->where('purpose', 'pinjam');
+        } elseif ($activityFilter === 'belajar') {
+            $visitsQuery->where('purpose', 'belajar');
+        }
+
+        // 3. Ambil log kunjungan hari ini (setelah filter + eager load)
+        $todaysVisits = $visitsQuery->get();
+
+        // 4. Identifikasi NIM Pengunjung (tidak perlu ikut filter)
         $uniqueVisitorsCount = Visit::whereDate('created_at', now()->today())
                             ->distinct('visitor_id')
                             ->count('visitor_id');
 
-        return view('admin.dashboard', compact('activeBorrowings', 'todaysVisits' , 'uniqueVisitorsCount'));
+        return view('admin.dashboard', compact(
+            'activeBorrowings',
+            'todaysVisits',
+            'uniqueVisitorsCount',
+            'activityFilter'
+        ));
     }
 
     public function returnItem($borrowing_id)
     {
         DB::transaction(function () use ($borrowing_id) {
-            // Cari data peminjaman
-            $borrowing = Borrowing::with('item')->findOrFail($borrowing_id);
 
-            if ($borrowing->status == 'dipinjam') {
-                // 1. Ubah status jadi dikembalikan
+            $borrowing = Borrowing::with(['item' => function ($q) {
+                $q->lockForUpdate();
+            }])->findOrFail($borrowing_id);
+
+            if (!$borrowing->item) {
+                return;
+            }
+
+            if ($borrowing->status === 'dipinjam') {
                 $borrowing->update([
-                    'status' => 'dikembalikan',
+                    'status'      => 'dikembalikan',
                     'returned_at' => now(),
                 ]);
 
-                // 2. KEMBALIKAN STOK (Increment)
-                $borrowing->item->increment('current_stock', $borrowing->quantity);
+                $item = $borrowing->item;
+                $newStock = $item->current_stock + $borrowing->quantity;
+
+                $item->current_stock = min($newStock, $item->total_stock);
+                $item->save();
             }
         });
 

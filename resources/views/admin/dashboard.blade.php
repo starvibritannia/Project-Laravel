@@ -8,18 +8,15 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     
     <style>
-        /* Gaya Navbar Konsisten */
         .navbar-custom { background-color: #343a40; }
         
-        /* Gaya Kartu Statistik */
         .stat-card {
             border: none;
             border-radius: 10px;
             transition: transform 0.2s;
         }
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
+        .stat-card:hover { transform: translateY(-5px); }
+
         .icon-box {
             width: 50px;
             height: 50px;
@@ -30,7 +27,6 @@
             font-size: 1.5rem;
         }
 
-        /* Gaya Tabel */
         .table-card {
             border: none;
             border-radius: 10px;
@@ -115,6 +111,7 @@
 
     <div class="row g-4">
         
+        {{-- BARANG BELUM DIKEMBALIKAN --}}
         <div class="col-lg-12">
             <div class="card table-card">
                 <div class="card-header bg-white py-3 d-flex align-items-center border-bottom">
@@ -141,7 +138,11 @@
                                         <small class="text-muted">{{ $borrow->visit->visitor_id }}</small>
                                     </td>
                                     <td>
-                                        <span class="text-primary fw-semibold">{{ $borrow->item->name }}</span>
+                                        @if($borrow->item)
+                                            <span class="text-primary fw-semibold">{{ $borrow->item->name }}</span>
+                                        @else
+                                            <span class="text-danger fw-semibold">[Item hilang]</span>
+                                        @endif
                                     </td>
                                     <td><span class="badge bg-secondary rounded-pill">{{ $borrow->quantity }} Unit</span></td>
                                     <td>
@@ -202,49 +203,96 @@
             </div>
         </div>
 
+        {{-- RIWAYAT KUNJUNGAN HARI INI --}}
         <div class="col-lg-12">
             <div class="card table-card">
-                <div class="card-header bg-white py-3 d-flex align-items-center border-bottom">
-                    <i class="bi bi-journal-text text-primary me-2 fs-5"></i>
-                    <h6 class="m-0 fw-bold text-dark">Riwayat Kunjungan Hari Ini</h6>
+                <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center border-bottom">
+                    <div class="d-flex align-items-center mb-2 mb-sm-0">
+                        <i class="bi bi-journal-text text-primary me-2 fs-5"></i>
+                        <h6 class="m-0 fw-bold text-dark">Riwayat Kunjungan Hari Ini</h6>
+                    </div>
+
+                    {{-- FILTER AKTIVITAS --}}
+                    <form method="GET" action="{{ route('admin.dashboard') }}" class="d-flex align-items-center gap-2">
+                        <span class="small text-muted">Filter aktivitas:</span>
+                        @php $activityFilter = $activityFilter ?? request('activity'); @endphp
+                        <select name="activity" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+                            <option value="" {{ $activityFilter == null ? 'selected' : '' }}>Semua</option>
+                            <option value="meminjam" {{ $activityFilter === 'meminjam' ? 'selected' : '' }}>Meminjam</option>
+                            <option value="belajar" {{ $activityFilter === 'belajar' ? 'selected' : '' }}>Belajar saja</option>
+                        </select>
+                    </form>
                 </div>
+
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
                             <thead>
                                 <tr>
-                                    <th class="ps-4" style="width: 15%;">Jam Masuk</th>
-                                    <th style="width: 25%;">Nama</th>
-                                    <th style="width: 20%;">NIM</th>
+                                    <th class="ps-4" style="width: 12%;">Jam Masuk</th>
+                                    <th style="width: 22%;">Nama</th>
+                                    <th style="width: 18%;">NIM</th>
                                     <th>Aktivitas</th>
-                                    <th class="text-center" style="width: 10%;">Aksi</th>
+                                    <th style="width: 18%;">Status Peminjaman</th>
+                                    <th class="text-center" style="width: 8%;">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($todaysVisits as $visit)
                                 <tr>
+                                    {{-- JAM --}}
                                     <td class="ps-4 fw-bold text-secondary">{{ $visit->created_at->format('H:i') }} WIB</td>
+
+                                    {{-- NAMA --}}
                                     <td class="fw-semibold">{{ $visit->visitor_name }}</td>
+
+                                    {{-- NIM --}}
                                     <td class="text-muted font-monospace">{{ $visit->visitor_id }}</td>
+
+                                    {{-- AKTIVITAS DETAIL --}}
                                     <td>
-                                        @if($visit->purpose == 'belajar')
+                                        @if($visit->purpose === 'belajar')
                                             <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill px-3">
                                                 <i class="bi bi-book me-1"></i> Belajar Saja
                                             </span>
-                                        @elseif($visit->purpose == 'pinjam')
-                                            @if($visit->borrowing)
-                                                <span class="badge bg-warning bg-opacity-10 text-warning border border-warning rounded-pill px-3 text-start text-wrap" style="line-height: 1.4;">
-                                                    <i class="bi bi-tools me-1"></i> 
-                                                    Pinjam: {{ $visit->borrowing->item->name ?? 'Item Dihapus' }} 
-                                                    <b>({{ $visit->borrowing->quantity }})</b>
+                                        @elseif($visit->purpose === 'pinjam')
+                                            @php
+                                                // asumsi relasi: $visit->borrowings (hasMany)
+                                                $borrowedItems = $visit->borrowings->map(function ($b) {
+                                                    $itemName = optional($b->item)->name ?? 'Item Dihapus';
+                                                    return $itemName.' ('.$b->quantity.'x)';
+                                                })->implode(', ');
+                                            @endphp
+
+                                            <span class="badge bg-warning bg-opacity-10 text-warning border border-warning rounded-pill px-3 text-start text-wrap" style="line-height: 1.4;">
+                                                <i class="bi bi-tools me-1"></i>
+                                                Pinjam: {{ $borrowedItems ?: 'Belum ada data peminjaman' }}
+                                            </span>
+                                        @endif
+                                    </td>
+
+                                    {{-- STATUS PEMINJAMAN --}}
+                                    <td>
+                                        @if($visit->purpose === 'belajar')
+                                            <span class="text-muted">-</span>
+                                        @else
+                                            @php
+                                                $hasActiveBorrowing = $visit->borrowings->contains('status', 'dipinjam');
+                                            @endphp
+
+                                            @if($hasActiveBorrowing)
+                                                <span class="badge bg-warning text-dark rounded-pill">
+                                                    Sedang dipinjam
                                                 </span>
                                             @else
-                                                <span class="badge bg-success bg-opacity-10 text-success border border-success rounded-pill px-3">
-                                                    <i class="bi bi-check-circle me-1"></i> Selesai / Dikembalikan
+                                                <span class="badge bg-success bg-opacity-10 text-success border border-success rounded-pill">
+                                                    Selesai / Dikembalikan
                                                 </span>
                                             @endif
                                         @endif
                                     </td>
+
+                                    {{-- AKSI --}}
                                     <td class="text-center">
                                         <button type="button" class="btn btn-link text-danger p-0" 
                                                 data-bs-toggle="modal" data-bs-target="#deleteVisitModal{{ $visit->id }}" 
@@ -254,15 +302,16 @@
                                     </td>
                                 </tr>
 
+                                {{-- MODAL HAPUS --}}
                                 <div class="modal fade" id="deleteVisitModal{{ $visit->id }}" tabindex="-1" aria-hidden="true">
                                     <div class="modal-dialog modal-dialog-centered">
                                         <div class="modal-content border-0 shadow-lg">
                                             
                                             <div class="modal-header bg-danger text-white">
-                                                <h5 class="modal-title">
-                                                    <i class="bi bi-exclamation-triangle-fill me-2"></i> Hapus Riwayat?
-                                                </h5>
-                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            <h5 class="modal-title">
+                                                <i class="bi bi-exclamation-triangle-fill me-2"></i> Hapus Riwayat?
+                                            </h5>
+                                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                             </div>
 
                                             <div class="modal-body text-center p-4">
@@ -298,7 +347,7 @@
                                 </div>
                                 @empty
                                 <tr>
-                                    <td colspan="5" class="text-center py-5 text-muted">
+                                    <td colspan="6" class="text-center py-5 text-muted">
                                         Belum ada pengunjung hari ini.
                                     </td>
                                 </tr>

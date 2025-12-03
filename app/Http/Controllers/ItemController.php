@@ -55,7 +55,12 @@ class ItemController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        $dataToUpdate = $request->all();
+        $dataToUpdate = $request->only([
+            'name', 
+            'description', 
+            'total_stock', 
+            'current_stock'
+        ]);
 
         // Cek jika user mengupload gambar baru
         if ($request->hasFile('image')) {
@@ -78,8 +83,8 @@ class ItemController extends Controller
     public function destroy(Item $item)
     {
         // Hapus file gambar dari penyimpanan jika ada
-    if ($item->image && Storage::disk('public')->exists($item->image)) {
-        Storage::disk('public')->delete($item->image);
+        if ($item->image && Storage::disk('public')->exists($item->image)) {
+            Storage::disk('public')->delete($item->image);
     }
         
         // Hapus data dari database

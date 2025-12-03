@@ -41,7 +41,7 @@ class VisitController extends Controller
                     ->with('error', 'Gagal Tap In! Stok barang ' . $item->name . ' hanya tersisa ' . $item->current_stock . ' unit.');
             }
         }
-        // ------------------------------------------
+        // Logika peminjaman + update stok (di dalam transaksi)----------------
 
         DB::transaction(function () use ($request) {
             
@@ -54,7 +54,7 @@ class VisitController extends Controller
 
             // Logika Jika Meminjam Barang
             if ($request->purpose == 'pinjam') {
-                $item = Item::findOrFail($request->item_id); 
+                $item = Item::lockForUpdate()->findOrFail($request->item_id); 
 
                 Borrowing::create([
                     'visit_id' => $visit->id,
@@ -64,7 +64,7 @@ class VisitController extends Controller
                 ]);
 
                 // Kurangi Stok
-                $item->decrement('current_stock', $request->quantity);
+                $item->decrement('current_stock', $request->quantity); 
             }
         });
 
@@ -104,16 +104,18 @@ class VisitController extends Controller
                         // Kembalikan Stok (Dengan Safety Check)
                         $newStock = $item->current_stock + $borrow->quantity;
                         
-                        if ($newStock > $item->total_stock) {
-                            $item->update(['current_stock' => $item->total_stock]);
-                        } else {
-                            $item->update(['current_stock' => $newStock]);
-                        }
+                        $item->current_stock = min($newStock, $item->total_stock);
+                        $item->save();
+
                     }
-                    
-                    // Hapus data peminjaman agar bersih dari dashboard
-                    $borrow->delete();
+    
                 }
+
+                //jangan dihapus, biarkan sebagai riwayat
+                $borrow->update([
+                    'status'      => 'dikembalikan',
+                    'returned_at' => now(),
+                ]);
 
                 // ROLLBACK: TIDAK ADA UPDATE STATUS MENJADI COMPLETED
                 // Biarkan data visit tetap ada sebagai riwayat.

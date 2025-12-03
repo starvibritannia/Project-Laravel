@@ -17,8 +17,8 @@ class Visit extends Model
     ];
 
     // Tambahkan relasi ini agar Visit bisa mengecek data peminjaman
-    public function borrowing()
+    public function borrowings()
     {
-        return $this->hasOne(Borrowing::class);
+        return $this->hasMany(Borrowing::class);
     }
 }
